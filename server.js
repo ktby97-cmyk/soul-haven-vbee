@@ -147,7 +147,7 @@ async function apiTts(req, res) {
   let body; try { body = JSON.parse((await readBody(req)) || '{}'); } catch (e) { return fail(res, 400, 'bad', 'Dữ liệu gửi lên không hợp lệ.'); }
   const text = String(body.text || '').slice(0, 3000).trim();
   if (!text) return fail(res, 400, 'bad', 'Không có nội dung để đọc.');
-  const voice = String(body.voice || '').trim() || VOICE;
+  const voice = VOICE; // luôn dùng giọng cài trên Render (VBEE_VOICE), bỏ qua giọng cũ còn lưu trong trình duyệt
   try {
     const all = await speakAll(text, voice, req.headers.host);
     res.writeHead(200, { 'Content-Type': 'audio/mpeg', 'Content-Length': all.length, 'Cache-Control': 'no-store', 'Access-Control-Allow-Origin': '*' });
@@ -171,15 +171,16 @@ async function apiVoiceList(req, res) {
   if (!guard(req, res)) return;
   const q = (new URL(req.url, 'http://x').searchParams.get('q') || '').toLowerCase();
   const H = { Authorization: 'Bearer ' + TOKEN, 'App-Id': APP_ID, 'Content-Type': 'application/json' };
-  const out = []; let cursor = '';
+  const out = [];
+  for (const own of ['VBEE', 'COMMUNITY', 'PERSONAL']) { let cursor = '';
   for (let i = 0; i < 15; i++) {
-    const r = await vbeeCall('https://vbee.vn/api/public/v1/voices?limit=100&language_code=vi-VN' + (cursor ? '&cursor=' + encodeURIComponent(cursor) : ''), { headers: H });
-    if (!r.ok) return fail(res, r.status, 'vbee', 'Không lấy được danh sách giọng (HTTP ' + r.status + '): ' + (await r.text()).slice(0, 200));
+    const r = await vbeeCall('https://vbee.vn/api/public/v1/voices?limit=100&languageCode=vi-VN&voiceOwnership=' + own + (cursor ? '&cursor=' + encodeURIComponent(cursor) : ''), { headers: H });
+    if (!r.ok) { if (own === 'VBEE') return fail(res, r.status, 'vbee', 'Không lấy được danh sách giọng (HTTP ' + r.status + '): ' + (await r.text()).slice(0, 300)); break; }
     const j = await r.json(), R = j.result || {};
-    for (const v of R.voices || []) if (!q || (v.code + ' ' + v.name).toLowerCase().includes(q)) out.push({ code: v.code, name: v.name, gender: v.gender });
+    for (const v of R.voices || []) if (!q || (v.code + ' ' + v.name).toLowerCase().includes(q)) out.push({ code: v.code, name: v.name, gender: v.gender, own });
     if (!R.pagination || !R.pagination.has_next_page) break;
     cursor = R.pagination.next_cursor;
-  }
+  } }
   json(res, 200, { count: out.length, voices: out });
 }
 
@@ -190,7 +191,7 @@ function findHtml() {
   return f ? path.join(DIR, f) : null;
 }
 // Gắn vào đầu trang: báo app đang chạy trên máy chủ này, và lần đầu mở thì bật sẵn Vbee + mã giọng mặc định.
-const BOOT = `<script>window.SOULHAVEN_TTS_BASE='';try{var k='soulHaven.tts',c=JSON.parse(localStorage.getItem(k)||'{}');if(!c._srv){c.mode='vbee';}var V=${JSON.stringify(VOICE)};if(!c.voice||c.voice===c._sv||(c._srv&&!c._sv))c.voice=V;c._sv=V;c._srv=1;localStorage.setItem(k,JSON.stringify(c));}catch(e){}</script>`;
+const BOOT = `<script>window.SOULHAVEN_TTS_BASE='';try{var k='soulHaven.tts',c=JSON.parse(localStorage.getItem(k)||'{}');if(!c._srv){c.mode='vbee';}var V=${JSON.stringify(VOICE)};c.voice=V;c.mode='vbee';c._sv=V;c._srv=1;localStorage.setItem(k,JSON.stringify(c));}catch(e){}</script>`;
 
 function serveApp(res) {
   const f = findHtml();
