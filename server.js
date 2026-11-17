@@ -199,6 +199,13 @@ function serveApp(res) {
   let html = fs.readFileSync(f, 'utf8');
   const i = html.search(/<head[^>]*>/i);
   html = i >= 0 ? html.replace(/<head[^>]*>/i, m => m + BOOT) : BOOT + html;
+  // Gắn sh-voice.js (chỉ đọc lời dẫn trong khung hình) vào cuối trang
+  const vf = path.join(DIR, 'sh-voice.js');
+  if (fs.existsSync(vf)) {
+    const tag = '<script>' + fs.readFileSync(vf, 'utf8').replace(/<\/script/gi, '<\\/script') + '</script>';
+    const j = html.lastIndexOf('</body>');
+    html = j >= 0 ? html.slice(0, j) + tag + html.slice(j) : html + tag;
+  }
   res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' });
   res.end(html);
 }
